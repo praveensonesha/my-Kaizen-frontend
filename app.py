@@ -36,7 +36,7 @@ def extract_text_from_image(image_file):
     results = reader.readtext(image)
     return ' '.join([result[1] for result in results])
 
-# def convert_text_to_json(text):
+def convert_text_to_json(text):
     prompt = f"Convert the following blood test report to a JSON format with key-value pairs:\n\n{text}"
     model = genai.GenerativeModel(
         model_name="gemini-1.5-flash",
@@ -46,7 +46,8 @@ def extract_text_from_image(image_file):
     response = model.generate_content(prompt)
     return response.text  # Adjust this line based on the response format
 
-def convert_text_to_json(text):
+
+# def convert_text_to_json(text):
     prompt = f"""Convert the following blood test report to a JSON format with key-value pairs:
 
     {text}

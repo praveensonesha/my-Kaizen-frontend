@@ -17,7 +17,7 @@ def save_to_mysql(user_id, json_data, testDate):
     cursor = connection.cursor()
 
     query = """
-    INSERT INTO Reports (UserId, reportDetails, testDate)
+    INSERT INTO reports (UserId, reportDetails, testDate)
     VALUES (%s, %s, STR_TO_DATE(%s, '%Y-%m-%d'))
     """
     cursor.execute(query, (user_id, json_data, testDate))
