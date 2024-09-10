@@ -5,3 +5,5 @@ pillow
 PyMuPDF
 mysql-connector-python
 matplotlib
+easyocr
+python-dotenv

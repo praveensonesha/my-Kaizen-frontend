@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import mysql.connector
 import json
 import requests
+import os
 
 # MySQL Connection Function
 def get_mysql_connection():
