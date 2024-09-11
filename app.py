@@ -185,6 +185,7 @@ def merge_and_summarize_data(user_id, new_report_data):
         system_instruction="You are supposed to merge and format the data as specified in the prompt. Return JSON only. Do not provide any text other than JSON.",
     )
     response = model.generate_content(prompt)
+
     merged_data = json.loads(response.text)  # Adjust this line based on the response format
 
     # Save the merged summarized data into the database
