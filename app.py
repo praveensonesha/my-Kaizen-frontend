@@ -4,10 +4,12 @@ import easyocr
 from dotenv import load_dotenv
 import google.generativeai as genai
 from PIL import Image
+import numpy as np
 import json
 import requests  # Import requests for making API calls
-from database import save_to_mysql 
+from database import save_to_mysql, get_existing_summarized_data, save_summarized_data
 import analysis
+import io
 
 # Load environment variables from .env file
 load_dotenv()
@@ -32,8 +34,15 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def extract_text_from_image(image_file):
-    image = Image.open(image_file)
-    results = reader.readtext(image)
+    # image = Image.open(image_file)
+
+    image = Image.open(io.BytesIO(image_file.read()))
+    
+    # Convert the PIL Image to a numpy array
+    image_np = np.array(image)
+    # Read text from the image using EasyOCR
+    results = reader.readtext(image_np)
+    # results = reader.readtext(image)
     return ' '.join([result[1] for result in results])
 
 def convert_text_to_json(text):
@@ -93,6 +102,95 @@ def convert_text_to_json(text):
     response = model.generate_content(prompt)
     return response.text  # Adjust this line based on the response format
 
+# New Function to merge new report data with existing summarized data
+def merge_and_summarize_data(user_id, new_report_data):
+    # Retrieve existing summarized data
+    existing_data = get_existing_summarized_data(user_id)
+    
+    # Prepare the prompt for the generative AI model
+    prompt = f"""
+    Given the following new blood report data and the existing summarized data, merge them into a single summarized JSON format. 
+
+    Existing summarized data:
+    {json.dumps(existing_data)}
+
+    New report data:
+    {json.dumps(new_report_data)}
+
+    The JSON output should have the following structure:
+    - "testName": the name of the test (e.g., "LDL Cholesterol")
+    - "latestResult": the latest result from the new report
+    - "unit": the unit of measurement
+    - "date": the date of the latest result in "dth Month yyyy" format
+    - "normalRange": an array with the normal range [min, max]
+    - "historicalData": an array of objects with date and value from previous reports
+
+    Example output:
+    {{
+        "testName": "LDL Cholesterol",
+        "latestResult": 160,
+        "unit": "mg/dL",
+        "date": "7th Nov 2023",
+        "normalRange": [100, 129],
+        "historicalData": [
+            {{ "date": "SEPT", "value": 130 }},
+            {{ "date": "OCT", "value": 145 }},
+            {{ "date": "NOV", "value": 160 }}
+        ]
+    }}
+    Return JSON only. Do not provide any text other than JSON.
+    """
+    # Prepare the prompt for the generative AI model
+    prompt = f"""
+    Given the following new blood report data and the existing summarized data, merge them into a single summarized JSON format.
+
+    Existing summarized data:
+    {json.dumps(existing_data)}
+
+    New report data:
+    {json.dumps(new_report_data)}
+
+    The JSON output should have the following structure:
+    - "testName": the name of the test (e.g., "LDL Cholesterol")
+    - "latestResult": the latest result from the new report and if the there result in new report then keep old values only
+    - "unit": the unit of measurement
+    - "date": the date of the latest result in "dth Month yyyy" format
+    - "normalRange": an array with the normal range [min, max]
+    - "historicalData": an array of objects with date and value from both existing and new reports
+
+    **Rules for merging:**
+    - If a test name already exists in the existing data, append the new result to the `historicalData` array, ensuring that the most recent result is marked as `latestResult` and that the data is ordered by date.
+    - If a test name does not exist in the existing data, add it as a new entry with the new report data.
+    - The `historicalData` should include both old and new values, sorted chronologically.
+
+    Example output:
+    {{
+        "testName": "Platelet Count",
+        "latestResult": 200000,
+        "unit": "mg/dL",
+        "date": "23rd Dec 2023",
+        "normalRange": [150000, 410000],
+        "historicalData": [
+            {{ "date": "12th Dec 2023", "value": 150000 }},
+            {{ "date": "23rd Dec 2023", "value": 200000 }}
+        ]
+    }}
+
+    Return JSON only. Do not provide any text other than JSON.
+    """
+    # Configure the generative AI model
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        generation_config={"response_mime_type": "application/json"},
+        system_instruction="You are supposed to merge and format the data as specified in the prompt. Return JSON only. Do not provide any text other than JSON.",
+    )
+    response = model.generate_content(prompt)
+    merged_data = json.loads(response.text)  # Adjust this line based on the response format
+
+    # Save the merged summarized data into the database
+    save_summarized_data(user_id, merged_data)
+
+    return merged_data
 
 # Process the uploaded file
 if uploaded_file:
@@ -104,40 +202,16 @@ if uploaded_file:
     # Convert the extracted text to JSON
     json_data = convert_text_to_json(text)
 
+
     # Convert json_data to json from json string
-    json_data_json = json.loads(json_data)
+    new_report_data = json.loads(json_data)
+    # json_data_json = json.loads(json_data)
     
     # Store the JSON data in MySQL with UserId = 2
-    save_to_mysql(2, json_data, json_data_json.get("testDate"))
+    save_to_mysql(2, json_data, new_report_data.get("testDate"))
     
-    st.success("Report saved successfully!")
+    # Merge new report data with existing summarized data
+    merged_data = merge_and_summarize_data(2, new_report_data)
 
-# New Feature: API Call to Fetch Reports and Visualizations
-user_id_input = st.number_input("Enter User ID", min_value=1)
-if st.button("Get Report from API"):
-    try:
-        # API endpoint to fetch report data and visualizations
-        api_url = "http://localhost:5000/api/getReports"
-        
-        # API request payload
-        payload = {"userId": user_id_input}
-        
-        # Make POST request to the API to fetch report data and visualization
-        response = requests.post(api_url, json=payload)
-        response.raise_for_status()  # Raise an exception for HTTP errors
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            if "reportData" in data:
-                st.write("Report Data:", data["reportData"])
-            
-            if "visualization" in data:
-                st.image(data["visualization"], caption='Blood Test Results Visualization')
-            else:
-                st.error("Failed to fetch visualization.")
-        else:
-            st.error(f"Failed to fetch report. Status code: {response.status_code}")
-    
-    except requests.RequestException as e:
-        st.error(f"Error making API request: {e}")
+    st.success("Report saved successfully!")
+    st.write("Merged Data:", merged_data)

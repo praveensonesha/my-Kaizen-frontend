@@ -25,3 +25,35 @@ def save_to_mysql(user_id, json_data, testDate):
     connection.commit()
     cursor.close()
     connection.close()
+
+# Retrieve existing summarized data for a user
+def get_existing_summarized_data(user_id):
+    connection = get_mysql_connection()
+    cursor = connection.cursor()
+
+    query = "SELECT summarizedData FROM summarized_reports WHERE UserId = %s"
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+
+    cursor.close()
+    connection.close()
+
+    if result:
+        return json.loads(result[0])
+    return None
+
+# Save or update summarized data in MySQL
+def save_summarized_data(user_id, summarized_data):
+    connection = get_mysql_connection()
+    cursor = connection.cursor()
+
+    query = """
+    INSERT INTO summarized_reports (UserId, summarizedData)
+    VALUES (%s, %s)
+    ON DUPLICATE KEY UPDATE summarizedData = %s, lastUpdated = NOW()
+    """
+    cursor.execute(query, (user_id, json.dumps(summarized_data), json.dumps(summarized_data)))
+
+    connection.commit()
+    cursor.close()
+    connection.close()
